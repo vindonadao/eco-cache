@@ -3,7 +3,7 @@
 Camada de cache semântico para RAG. Responde o que já foi respondido, sem misturar o que
 não pode ser misturado.
 
-[![status](https://img.shields.io/badge/status-rev--0.1%20fundação-blue)](CHANGELOG.md)
+[![status](https://img.shields.io/badge/status-rev--0.2-blue)](CHANGELOG.md)
 [![licença](https://img.shields.io/badge/licença-MIT-green)](LICENSE)
 
 ## O problema
@@ -111,11 +111,15 @@ estavam erradas.
 
 ## Estado
 
-**rev-0.1, fundação.** Schema, contrato público, política de recência, lookup, gravação e
-invalidação estão escritos. `extractPartition`, `passesEntityGuard` e `embed` são do
-Sprint 2 e hoje lançam de propósito, então `answerWithCache()` ainda não roda ponta a
-ponta. A suíte de falso positivo está versionada com os pares reais, aguardando a
-implementação que ela vai julgar.
+**rev-0.2.** O módulo roda ponta a ponta: partição determinística, entity guard,
+embedding com orçamento de 800 ms, os três níveis de cache, invalidação por versão de
+corpus. A suíte de falso positivo está ativa e verde, com os pares da tabela obrigatória.
+São 55 testes.
+
+O que falta antes de produção: aplicar as migrations num Postgres de verdade (nenhum
+teste tocou banco, o client é falso) e rodar a semana de shadow mode para calibrar o
+threshold. Extração de município não existe, só de UF, então perguntas sobre cidades
+diferentes do mesmo estado ainda dependem só do embedding para se separar.
 
 O plano completo está em [`docs/arquitetura.md`](docs/arquitetura.md), que é a fonte da
 verdade do projeto. O contexto de trabalho está em [`CLAUDE.md`](CLAUDE.md).

@@ -41,12 +41,28 @@ consome já tem.
 | `src/lookup.ts` | 1 | RPC `cache_lookup`, `lookupExact` (L0), `touch`, versão do corpus | pronto |
 | `src/store.ts` | 1 | Grava o resultado do L2 | pronto |
 | `src/invalidate.ts` | 4 | Bump de `corpus_version` + purge seletivo | pronto |
-| `src/partition.ts` | **2** | `extractPartition` + `passesEntityGuard` | **stub, lança** |
-| `src/embed.ts` | **2** | voyage-3-lite com timeout de 800 ms | **stub, lança** |
-| `src/index.ts` | 1 | `answerWithCache()`, o contrato público | fluxo completo |
+| `src/uf.ts` | 2 | Dicionário das 27 UFs, canonização sigla ↔ nome | pronto |
+| `src/partition.ts` | 2 | `extractPartition` + `passesEntityGuard` | pronto |
+| `src/embed.ts` | 2 | voyage-3-lite, orçamento de 800 ms com retry dentro | pronto |
+| `src/index.ts` | 1 | `answerWithCache()`, o contrato público | pronto |
 
-`answerWithCache()` **não roda ainda**: depende de `partition.ts` e `embed.ts`, que são
-do Sprint 2 e lançam de propósito. O fluxo está escrito e tipado; falta o miolo.
+`answerWithCache()` roda ponta a ponta desde a rev-0.2. Nunca foi exercitado contra
+Postgres real: os testes usam client e `fetch` falsos. Aplicar as migrations num Supabase
+de teste é o próximo passo antes de qualquer estreia.
+
+## Testes
+
+| Arquivo | Cobre |
+|---|---|
+| `tests/false-positive.test.ts` | **Bloqueante.** Os pares da §7, ativos |
+| `tests/partition.test.ts` | Normalização, política, UF, partição, entity tokens, guard |
+| `tests/embed.test.ts` | Retry, orçamento de 800 ms, dimensão, ausência de chave |
+| `tests/answer-with-cache.test.ts` | Fluxo completo: hit, miss, degradação, guard, shadow, bypass |
+| `tests/invalidation.test.ts` | `todo`: precisa de banco, é Sprint 4 |
+
+`embed.test.ts` e `answer-with-cache.test.ts` não estão na lista da §6. Foram criados
+porque as duas promessas mais fortes do documento (falha de embedding não derruba o
+produto, e o guard tem a palavra final) não podem ficar sem teste.
 
 ## Migrations
 
@@ -81,6 +97,26 @@ depois.
 **6. Marcadores de recência usam lookaround `\p{L}`, não `\b`.** `\b` é ASCII: `\búltimo\b`
 nunca casaria. Em português isso é rotina, não exceção.
 
+**7. Entity token é só o que tem dígito.** A §3B fala em "números, siglas em caixa alta,
+entidades nomeadas", mas a §7 exige que *"editais de TI em SP"* dê hit com *"edital de
+tecnologia em São Paulo"*. Se sigla alfabética virasse token duro, esse par nunca casaria,
+porque "TI" não tem par em "tecnologia". As duas regras do documento se contradizem, e a
+tabela bloqueante vence. Estado, código e valor já são capturados pela partição, que é a
+rede de verdade; o guard cuida do número que escapou dela. Além disso `extractPartition`
+recebe a query já normalizada, ou seja, minúscula: "caixa alta" nem chega até ele.
+
+**8. Siglas de UF ambíguas exigem preposição de lugar.** `se`, `to`, `ma`, `pa`, `go`,
+`ac`, `al` e `am` são palavras correntes em português. Sem isso, *"se você tem
+interesse"* viraria Sergipe e mandaria a query para uma partição errada.
+
+**9. Ordem dos extratores é semântica, não estética.** CNPJ antes de data, data antes de
+identificador, valor antes de CNAE. Cada extrator consome o trecho que casou. Trocar a
+ordem faz `15/08/2026` virar edital e `R$ 1.000.000` virar código CNAE.
+
+**10. Os 800 ms do `embed` são orçamento total, não por tentativa.** O documento pede
+"retry e timeout de 800 ms". Duas tentativas de 800 ms dariam 1,6 s num caminho que
+promete 90 ms, então o retry só acontece se sobrar tempo no deadline.
+
 ## Realidade dos consumidores (verificado em 15/08/2026)
 
 - **PregApp (o "Editais monitor" do documento) não tem RAG.** Migrations `0001` a `0006`,
@@ -105,15 +141,26 @@ nunca casaria. Em português isso é rotina, não exceção.
   não sirva. O custo de errar é uma resposta errada entregue com confiança.
 - **Nada de LLM no caminho quente.** Nem para extrair partição, nem para julgar hit.
 
-## Definition of Done (rev-1.0, fim do Sprint 2)
+## Definition of Done (rev-1.0)
 
-- [ ] `extractPartition` separa UF, CNAE, limiar monetário, recência e identificador
-- [ ] `passesEntityGuard` rejeita divergência de número e sigla
-- [ ] `embed` com timeout de 800 ms e degradação para L0 quando falha
-- [ ] Todos os pares da §7 rodando como teste real, verdes
-- [ ] `npm run lint && npm run typecheck && npm test` limpos
+- [x] `extractPartition` separa UF, CNAE, limiar monetário, recência e identificador
+- [x] `passesEntityGuard` rejeita divergência numérica
+- [x] `embed` com orçamento de 800 ms e degradação para L0 quando falha
+- [x] Todos os pares da §7 rodando como teste real, verdes
+- [x] `npm run lint && npm run typecheck && npm test` limpos
 - [ ] Migrations aplicadas num Supabase de teste, `cache_lookup` respondendo
 - [ ] Estreia em shadow mode com métrica de divergência coletada
+
+## Limitações conhecidas
+
+- **Município não é extraído.** A §3A diz "UF / município". As 27 UFs estão
+  dicionarizadas; os 5.570 municípios não. Duas perguntas sobre cidades diferentes do
+  mesmo estado caem na mesma partição e dependem só do embedding para se separar. Se
+  algum consumidor for por cidade, isso vira falso positivo e precisa de solução antes.
+- **Nenhum teste tocou Postgres.** Client e `fetch` são falsos. As migrations, a RPC e a
+  RLS estão escritas mas não executadas.
+- **O threshold de 0,94 é o do documento, não medido.** Só sai do lugar depois da semana
+  de shadow mode.
 
 ## Forks abertos (arquitetura.md §12)
 

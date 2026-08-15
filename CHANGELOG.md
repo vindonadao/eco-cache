@@ -2,6 +2,46 @@
 
 Todas as mudanças relevantes do Eco. Versionamento por revisões (`rev-X.Y`).
 
+## rev-0.2 — 15/08/2026
+
+Sprint 2. O módulo passa a rodar ponta a ponta.
+
+### Adicionado
+
+- `src/uf.ts`: dicionário das 27 UFs com canonização sigla ↔ nome por extenso, casamento
+  do alias mais longo primeiro e desambiguação das siglas que também são palavra comum
+- `src/partition.ts`: `extractPartition` extrai CNPJ, data, valor monetário, CNAE,
+  identificador, recência, mês, ano e UF em ordem, cada extrator consumindo o trecho que
+  casou; `passesEntityGuard` compara os tokens duros residuais
+- `src/embed.ts`: voyage-3-lite por `fetch`, orçamento total de 800 ms com retry dentro
+  do deadline, retry só em 429, 5xx, timeout e erro de rede, e validação da dimensão do
+  vetor antes de devolver
+- `EMBEDDING_ENDPOINT` no `config.ts`, para teste e para proxy interno
+- `tests/embed.test.ts` e `tests/answer-with-cache.test.ts`
+- Suíte de falso positivo ativada: os pares da §7 saíram de `todo` e são teste real
+
+### Verificado
+
+- Os cinco pares que não podem se encontrar caem em partições distintas pelo campo duro
+  correto, não por acidente: UF, valor, CNAE, recência e identificador
+- Os dois pares que devem casar compartilham partição: "SP" e "São Paulo" canonizam para
+  a mesma chave, e query sem campo duro cai na partição vazia estável
+- "se você tem interesse" não vira Sergipe; "Mato Grosso do Sul" não colide com "Mato Grosso"
+- Falha de embedding degrada para L0 e o produto continua respondendo
+- 55 testes passando, 7 `todo` (invalidação, que precisa de banco)
+
+### Decisões
+
+- Entity token é só o que contém dígito. A §3B pede sigla em caixa alta, mas a §7 exige
+  que "TI" case com "tecnologia". A tabela bloqueante vence, e a partição já cobre o resto
+- Siglas de UF ambíguas exigem preposição de lugar antes
+- Os 800 ms do `embed` são orçamento total, não por tentativa
+
+### Limitação registrada
+
+- Município não é extraído, só UF. Perguntas sobre cidades diferentes do mesmo estado
+  caem na mesma partição
+
 ## rev-0.1 — 15/08/2026
 
 Abertura do projeto. Fundação a partir de `docs/arquitetura.md`.

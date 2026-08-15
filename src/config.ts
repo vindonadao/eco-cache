@@ -16,3 +16,7 @@ export const CACHE_CONFIG = {
 
 /** Chave da API de embedding. Lida aqui e em nenhum outro lugar. */
 export const EMBEDDING_API_KEY = process.env.VOYAGE_API_KEY ?? '';
+
+/** Endpoint da API de embedding. Override existe para teste e para proxy interno. */
+export const EMBEDDING_ENDPOINT =
+  process.env.EMBEDDING_ENDPOINT ?? 'https://api.voyageai.com/v1/embeddings';
