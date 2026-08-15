@@ -1,0 +1,19 @@
+# Dependências e build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Segredos — NUNCA commitar
+.env
+.env.local
+.env.*.local
+
+# Sistema / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Cobertura e cache de teste
+coverage/
+.vitest/

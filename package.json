@@ -1,0 +1,57 @@
+{
+  "name": "@donadao/eco",
+  "version": "0.1.0",
+  "description": "Eco — camada de cache semântico para RAG. Responde o que já foi respondido, sem misturar o que não pode ser misturado.",
+  "license": "MIT",
+  "author": "Donadão Labs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vindonadao/eco-cache.git"
+  },
+  "homepage": "https://github.com/vindonadao/eco-cache#readme",
+  "keywords": [
+    "rag",
+    "semantic-cache",
+    "pgvector",
+    "supabase",
+    "llm",
+    "embeddings"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "supabase/migrations",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": ">=2"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@supabase/supabase-js": "^2.107.0",
+    "@types/node": "latest",
+    "eslint": "latest",
+    "prettier": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}
