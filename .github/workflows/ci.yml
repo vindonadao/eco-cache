@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -34,23 +34,34 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Sobe o Supabase local (aplica as 4 migrations)
+      - name: Sobe o Supabase local (aplica as migrations)
         run: supabase start
 
-      - run: npm ci
-      - run: npm test
-
-      - name: Confere que a suíte de integração rodou mesmo
+      # As credenciais locais mudam entre versões do CLI, então são lidas do stack que
+      # acabou de subir em vez de assumidas. Hardcodá-las fez o job pular tudo em silêncio.
+      - name: Exporta as credenciais do stack
         run: |
-          # Sem banco a suíte pula em silêncio e o job passaria sem testar nada.
+          supabase status -o env > .supabase-env
+          {
+            echo "TEST_SUPABASE_URL=$(grep '^API_URL=' .supabase-env | cut -d'"' -f2)"
+            echo "TEST_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' .supabase-env | cut -d'"' -f2)"
+            echo "TEST_JWT_SECRET=$(grep '^JWT_SECRET=' .supabase-env | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+          rm .supabase-env
+
+      - run: npm ci
+
+      - name: Testes, exigindo que a integração tenha rodado
+        run: |
           npm test 2>&1 | tee resultado.txt
+          # Sem banco a suíte pula em silêncio e o job passaria sem testar nada.
           if grep -q "skipped" resultado.txt; then
             echo "::error::testes de integração foram pulados; o banco não subiu"
             exit 1
