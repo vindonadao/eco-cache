@@ -6,8 +6,14 @@
  * regra de negócio — só o formato dos dados que as colunas de `rag_cache` já definem.
  */
 
-/** Nível que respondeu a query. */
-export type HitLevel = 'L0' | 'L1' | 'MISS' | 'BYPASS' | 'SKIP';
+/**
+ * Nível que respondeu a query.
+ *
+ * `SHADOW` significa que o cache tinha resposta e não serviu, porque o shadow mode estava
+ * ligado. O consumidor pagou o pipeline, então não é hit; mas também não é `MISS`, e
+ * contar como miss estragaria a primeira métrica do dashboard da §9.
+ */
+export type HitLevel = 'L0' | 'L1' | 'MISS' | 'BYPASS' | 'SKIP' | 'SHADOW';
 
 /**
  * Citação devolvida pelo pipeline de RAG. O shape é do consumidor: o Eco
@@ -63,4 +69,10 @@ export type CacheEvent =
   | { type: 'miss' }
   | { type: 'guard_reject'; similarity: number }
   | { type: 'embed_fail'; error: string }
-  | { type: 'shadow_mismatch'; similarity: number };
+  | {
+      type: 'shadow_mismatch';
+      similarity: number;
+      hitLevel: Extract<HitLevel, 'L0' | 'L1'>;
+      textSimilarity: number;
+      citationsMatch: boolean;
+    };

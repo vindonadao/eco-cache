@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Portão bloqueante. Não depende de Docker nem de banco, porque a suíte de falso
+  # positivo da §7 é a última coisa que pode ficar refém de infra pesada.
+  quality:
+    name: lint, typecheck, build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  # Migrations, RPC, RLS e ciclo completo contra Postgres de verdade.
+  integration:
+    name: integração com Postgres
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Sobe o Supabase local (aplica as 4 migrations)
+        run: supabase start
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Confere que a suíte de integração rodou mesmo
+        run: |
+          # Sem banco a suíte pula em silêncio e o job passaria sem testar nada.
+          npm test 2>&1 | tee resultado.txt
+          if grep -q "skipped" resultado.txt; then
+            echo "::error::testes de integração foram pulados; o banco não subiu"
+            exit 1
+          fi
+
+      - if: always()
+        run: supabase stop --no-backup

@@ -6,12 +6,15 @@ import { metrics } from './metrics.js';
 import { normalize, queryHashOf } from './normalize.js';
 import { extractPartition, passesEntityGuard } from './partition.js';
 import { classify } from './policy.js';
+import { compareShadow } from './shadow.js';
 import { store } from './store.js';
-import type { CachedAnswer, HitLevel, RagResult } from './types.js';
+import type { CacheHit, CachedAnswer, HitLevel, RagResult } from './types.js';
 
 export { CACHE_CONFIG } from './config.js';
+export { supabaseEventSink, useSupabaseEvents } from './events.js';
 export { bumpCorpusVersion, invalidateByChunks } from './invalidate.js';
 export { metrics } from './metrics.js';
+export { compareShadow, type ShadowComparison } from './shadow.js';
 export type * from './types.js';
 
 /**
@@ -56,6 +59,9 @@ export async function answerWithCache(input: {
       })
     : await lookupExact({ client, tenantId, queryHash, corpusVersion });
 
+  /** Hit aprovado pelo guard que o shadow mode impediu de servir. */
+  let withheld: CacheHit | null = null;
+
   if (hit) {
     if (passesEntityGuard(entityTokens, hit.entityTokens)) {
       void touch(client, hit.id);
@@ -72,13 +78,32 @@ export async function answerWithCache(input: {
           similarity: hit.similarity,
         };
       }
-      // shadow mode: consulta, registra, não serve.
+      withheld = hit;
     } else {
       metrics.emit({ type: 'guard_reject', similarity: hit.similarity });
     }
   }
 
   const fresh = await runRag();
+
+  if (withheld) {
+    // O cache acertou e foi impedido de servir. Comparar aqui é grátis: o pipeline já
+    // rodou, e é exatamente esta divergência que a semana de shadow existe para medir.
+    const comparison = compareShadow(withheld, fresh);
+    if (comparison.mismatch) {
+      metrics.emit({
+        type: 'shadow_mismatch',
+        similarity: withheld.similarity,
+        hitLevel: withheld.hitLevel,
+        textSimilarity: comparison.textSimilarity,
+        citationsMatch: comparison.citationsMatch,
+      });
+    }
+
+    // Não regrava: a entrada existe e acabou de ser contabilizada como hit.
+    return toCached(fresh, 'SHADOW');
+  }
+
   metrics.emit({ type: 'miss' });
 
   void store({

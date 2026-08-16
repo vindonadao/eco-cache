@@ -2,6 +2,54 @@
 
 Todas as mudanças relevantes do Eco. Versionamento por revisões (`rev-X.Y`).
 
+## rev-0.4 — 16/08/2026
+
+Fecha tudo que dependia só de código. O que resta precisa de uma estreia real.
+
+### Corrigido
+
+- **Shadow mode contava acerto como `miss`.** O fluxo caía no final e emitia `miss`,
+  inflando exatamente a primeira métrica do dashboard da §9, que é a razão de a semana de
+  shadow existir. Agora o hit é contabilizado como hit e a resposta volta com
+  `hitLevel: 'SHADOW'`
+- **Shadow mode não comparava nada.** O evento `shadow_mismatch` estava declarado no tipo
+  e nunca era emitido, então uma semana inteira de shadow produziria zero informação e o
+  threshold acabaria calibrado no olho
+- Em shadow, o módulo não regrava a entrada que acabou de servir como hit
+
+### Adicionado
+
+- `src/shadow.ts`: comparação determinística entre o que o cache teria servido e o que o
+  pipeline respondeu, por Jaccard de tokens e igualdade de citações. Sem LLM juiz, pelo
+  mesmo motivo da §11. Citação diferente conta como divergência mesmo com texto parecido
+- `CACHE_SHADOW_MISMATCH_FLOOR` (default 0.9). Não é threshold de cache: nada é servido ou
+  recusado por causa dele, e o evento carrega o número medido para reanálise com outro corte
+- **CI no GitHub Actions**, que a §7 promete desde sempre. Dois jobs: o portão bloqueante
+  (lint, typecheck, build, testes) sem depender de Docker, e a integração com Supabase.
+  O job de integração falha se detectar teste pulado, senão passaria sem testar nada
+- `0005_cache_purge.sql`: função `cache_purge()` e agendamento diário condicional em
+  `pg_cron`. A migration nunca falha por ausência da extensão; sem cron, a função fica
+  disponível para chamada manual
+- `0006_cache_events.sql`: tabela append-only com RLS por tenant e a view
+  `cache_metrics_daily` com os quatro números da §9, em `security_invoker`
+- `src/events.ts`: sink opcional que persiste a telemetria. Quem preferir Helicone ou
+  LangSmith continua registrando o próprio destino
+
+### Verificado
+
+- `cache_purge()` remove expirada de 8 dias e versão de corpus muito atrás, e preserva a
+  expirada ontem e a viva. É idempotente
+- Job `eco-cache-purge` agendado (`17 4 * * *`), conferido à mão no banco. Sem teste
+  automatizado: o schema `cron` não é exposto pelo PostgREST, e criar função só para
+  espiá-lo seria superfície nova em produção por causa de teste
+- A view calcula hit rate e guard reject rate corretamente, e a RLS de `cache_events` isola
+- 86 testes com banco, 58 sem
+
+### Decisão
+
+- **O Eco é portfólio técnico por ora**, sem consumidor em produção. Os dois itens abertos
+  do DoD dependem de uma estreia, e nenhum projeto da casa tem RAG em TypeScript hoje
+
 ## rev-0.3 — 16/08/2026
 
 O schema deixou de ser texto. Primeira execução contra Postgres real.

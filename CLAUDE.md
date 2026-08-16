@@ -44,6 +44,8 @@ consome já tem.
 | `src/uf.ts` | 2 | Dicionário das 27 UFs, canonização sigla ↔ nome | pronto |
 | `src/partition.ts` | 2 | `extractPartition` + `passesEntityGuard` | pronto |
 | `src/embed.ts` | 2 | voyage-3-lite, orçamento de 800 ms com retry dentro | pronto |
+| `src/shadow.ts` | 3 | Compara o que teria servido com o que o pipeline respondeu | pronto |
+| `src/events.ts` | 4 | Sink que persiste telemetria em `cache_events` | pronto |
 | `src/index.ts` | 1 | `answerWithCache()`, o contrato público | pronto |
 
 `answerWithCache()` roda ponta a ponta contra Postgres real desde a rev-0.3.
@@ -80,9 +82,17 @@ Sem Docker a suíte não quebra, ela pula: `databaseAvailable()` checa antes e o
 
 ## Migrations
 
-`supabase/migrations/0001` a `0004`, na ordem, idempotentes. Transcrição literal de
-`arquitetura.md` §4 e §5, exceto `0004_fn_cache_touch.sql`, cujo corpo o documento
-descreve em prosa (incremento de `hit_count`/`last_hit_at`, retorno `void`).
+`supabase/migrations/0001` a `0006`, na ordem, idempotentes.
+
+`0001` a `0003` são transcrição literal de `arquitetura.md` §4 e §5. `0004` implementa o
+que a §5 descreve em prosa. `0005` (purge da §8) e `0006` (telemetria da §9) traduzem
+seções que o documento especifica sem dar o SQL completo.
+
+O agendamento do purge é condicional: `pg_cron` não existe em todo Postgres e no Supabase
+gerenciado precisa ser habilitado antes. A migration nunca falha por isso; sem cron, a
+função `cache_purge()` fica disponível para chamada manual. No banco local o job é criado
+como `eco-cache-purge`, `17 4 * * *`, verificado à mão (o schema `cron` não é exposto pelo
+PostgREST, então não há teste automatizado disso).
 
 ## Decisões que valem registrar
 
@@ -131,6 +141,18 @@ ordem faz `15/08/2026` virar edital e `R$ 1.000.000` virar código CNAE.
 "retry e timeout de 800 ms". Duas tentativas de 800 ms dariam 1,6 s num caminho que
 promete 90 ms, então o retry só acontece se sobrar tempo no deadline.
 
+**12. Shadow mode devolve `hitLevel: 'SHADOW'`, não `'MISS'`.** Antes da rev-0.4 o fluxo
+em shadow caía no final e emitia `miss`, o que inflaria o miss rate e destruiria a
+primeira métrica do dashboard da §9, justamente a que a semana de shadow existe para
+medir. Em shadow o cache acertou e foi impedido de servir: conta como hit, com a
+divergência registrada à parte.
+
+**13. A comparação do shadow é determinística, sem LLM juiz.** O documento manda comparar
+e não diz como. São dois sinais: Jaccard dos tokens da resposta e igualdade das citações.
+Citação diferente conta como divergência mesmo com texto parecido, porque significa que a
+resposta mudou de base. Um LLM juiz destruiria o propósito do cache, pelo mesmo motivo da
+§11. `source_chunk_ids` não entra porque a RPC não os devolve.
+
 **11. `para` e `pra` não são preposições de lugar para efeito de UF.** `fold('pará')`
 produz `para`. Se `para` valesse como preposição, "para se cadastrar" viraria Sergipe e
 "para me inscrever" viraria Pará. O preço é não detectar "editais para SE", que cai na
@@ -171,8 +193,16 @@ partição vazia. É falso negativo, o lado barato da assimetria, e construção
 - [x] Migrations aplicadas num Supabase de teste, `cache_lookup` respondendo
 - [x] RLS exercitada com JWT real, incluindo a tentativa de gravar em nome de outro tenant
 - [x] Ciclo completo verificado contra Postgres: MISS grava, L0 e L1 servem, bump invalida
+- [x] Shadow mode capaz de medir divergência, não só de não servir
+- [x] CI bloqueante rodando a suíte, incluindo a de falso positivo
+- [x] Purge físico da §8 como migration, com agendamento condicional
+- [x] Telemetria persistida e os quatro números da §9 numa view
 - [ ] Estreia em shadow mode com métrica de divergência coletada
 - [ ] Threshold calibrado com dado, não com o número do documento
+
+**Decisão 16/08/2026: o Eco é portfólio técnico por ora**, sem consumidor em produção.
+Os dois itens abertos acima dependem de uma estreia, e nenhum projeto da casa tem RAG em
+TypeScript. O que dependia só de código está fechado.
 
 ## Limitações conhecidas
 

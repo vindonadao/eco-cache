@@ -190,18 +190,69 @@ describe('answerWithCache', () => {
     expect(runRag).toHaveBeenCalledTimes(1);
   });
 
-  it('shadow mode consulta, registra e não serve', async () => {
-    vi.stubEnv('CACHE_SHADOW_MODE', 'true');
-    stubEmbeddingOk();
-    const { client } = fakeClient({ lookupRows: [cachedRow()] });
-    const runRag = vi.fn().mockResolvedValue(ragResult);
+  describe('shadow mode', () => {
+    async function runShadow(cachedAnswer: string, citations: unknown[] = ragResult.citations) {
+      vi.stubEnv('CACHE_SHADOW_MODE', 'true');
+      stubEmbeddingOk();
+      const { client } = fakeClient({
+        lookupRows: [cachedRow({ answer_text: cachedAnswer, answer_citations: citations })],
+      });
+      const runRag = vi.fn().mockResolvedValue(ragResult);
 
-    const { answerWithCache } = await loadModule();
-    const resposta = await answerWithCache({ client, tenantId: TENANT, query: 'como me cadastro?', runRag });
+      const { answerWithCache, metrics } = await loadModule();
+      const eventos: Array<{ type: string; [key: string]: unknown }> = [];
+      metrics.setSink((event) => eventos.push(event));
 
-    expect(resposta.cached).toBe(false);
-    expect(resposta.answerText).toBe(ragResult.answerText);
-    expect(runRag).toHaveBeenCalledTimes(1);
+      const resposta = await answerWithCache({
+        client,
+        tenantId: TENANT,
+        query: 'como me cadastro?',
+        runRag,
+      });
+
+      return { resposta, eventos, runRag };
+    }
+
+    it('consulta, não serve, e devolve a resposta fresca', async () => {
+      const { resposta, runRag } = await runShadow(ragResult.answerText);
+
+      expect(resposta.cached).toBe(false);
+      expect(resposta.hitLevel).toBe('SHADOW');
+      expect(resposta.answerText).toBe(ragResult.answerText);
+      expect(runRag).toHaveBeenCalledTimes(1);
+    });
+
+    it('conta o acerto como hit, não como miss', async () => {
+      const { eventos } = await runShadow(ragResult.answerText);
+      const tipos = eventos.map((e) => e.type);
+
+      // Contar isso como miss estragaria a primeira métrica do dashboard da §9.
+      expect(tipos).toContain('hit_l1');
+      expect(tipos).not.toContain('miss');
+    });
+
+    it('não registra divergência quando as respostas batem', async () => {
+      const { eventos } = await runShadow(ragResult.answerText);
+      expect(eventos.map((e) => e.type)).not.toContain('shadow_mismatch');
+    });
+
+    it('registra divergência quando o texto cacheado é outro', async () => {
+      const { eventos } = await runShadow('resposta completamente diferente sobre outro assunto');
+      const mismatch = eventos.find((e) => e.type === 'shadow_mismatch');
+
+      expect(mismatch).toBeDefined();
+      expect(mismatch?.hitLevel).toBe('L1');
+      expect(mismatch?.textSimilarity).toBeLessThan(0.9);
+    });
+
+    it('registra divergência quando o texto bate mas a citação mudou de base', async () => {
+      const { eventos } = await runShadow(ragResult.answerText, [{ doc: 'outro.pdf', page: 99 }]);
+      const mismatch = eventos.find((e) => e.type === 'shadow_mismatch');
+
+      expect(mismatch).toBeDefined();
+      expect(mismatch?.citationsMatch).toBe(false);
+      expect(mismatch?.textSimilarity).toBe(1);
+    });
   });
 
   it('cache desligado passa direto, sem tocar no banco', async () => {

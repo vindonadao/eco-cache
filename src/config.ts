@@ -11,6 +11,12 @@ export const CACHE_CONFIG = {
   defaultTtlSeconds: 60 * 60 * 24 * 7,
   volatileTtlSeconds: 60 * 15,
   shadowMode: process.env.CACHE_SHADOW_MODE === 'true',
+  /**
+   * Abaixo desta semelhança textual, o shadow mode conta divergência. Não é threshold de
+   * cache: nada é servido ou recusado por causa dele. Existe só para dar um corte inicial
+   * à medição, e o evento carrega o número medido para reanálise com outro corte.
+   */
+  shadowMismatchFloor: Number(process.env.CACHE_SHADOW_MISMATCH_FLOOR ?? 0.9),
   publicTenantId: '00000000-0000-0000-0000-000000000000',
 } as const;
 

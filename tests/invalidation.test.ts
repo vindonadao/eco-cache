@@ -424,6 +424,123 @@ describe.skipIf(!available)('integração com Postgres', () => {
     });
   });
 
+  describe('purge físico (pg_cron)', () => {
+    beforeAll(async () => {
+      await wipe();
+      await setCorpusVersion(TENANT_A, 5);
+      // Expirada há mais de 7 dias: alvo do purge.
+      await seed({
+        tenantId: TENANT_A,
+        queryHash: 'hash-velha',
+        partitionKey: 'part-1',
+        corpusVersion: 5,
+        answer: 'expirou faz tempo',
+        seed: 10,
+        expiresInSeconds: -60 * 60 * 24 * 8,
+      });
+      // Expirada ontem: já não é servida, mas ainda não é lixo.
+      await seed({
+        tenantId: TENANT_A,
+        queryHash: 'hash-recem-expirada',
+        partitionKey: 'part-1',
+        corpusVersion: 5,
+        answer: 'expirou ontem',
+        seed: 11,
+        expiresInSeconds: -60 * 60 * 24,
+      });
+      // Válida, mas presa numa versão de corpus muito atrás da atual.
+      await seed({
+        tenantId: TENANT_A,
+        queryHash: 'hash-versao-antiga',
+        partitionKey: 'part-1',
+        corpusVersion: 1,
+        answer: 'corpus antigo',
+        seed: 12,
+      });
+      // Válida e atual: não pode ser tocada.
+      await seed({
+        tenantId: TENANT_A,
+        queryHash: 'hash-viva',
+        partitionKey: 'part-1',
+        corpusVersion: 5,
+        answer: 'viva',
+        seed: 13,
+      });
+    });
+
+    it('remove expirada antiga e versão muito atrás, preservando o resto', async () => {
+      const { data, error } = await serviceClient().rpc('cache_purge');
+      expect(error).toBeNull();
+      expect(data).toBe(2);
+
+      const { data: sobreviventes } = await serviceClient()
+        .from('rag_cache')
+        .select('query_hash')
+        .eq('tenant_id', TENANT_A);
+
+      const hashes = (sobreviventes ?? []).map((r) => r.query_hash).sort();
+      expect(hashes).toEqual(['hash-recem-expirada', 'hash-viva']);
+    });
+
+    it('é idempotente: rodar de novo não remove mais nada', async () => {
+      const { data, error } = await serviceClient().rpc('cache_purge');
+      expect(error).toBeNull();
+      expect(data).toBe(0);
+    });
+
+    /**
+     * O agendamento em si não é testado aqui: o schema `cron` não é exposto pelo
+     * PostgREST, e criar uma função só para espiá-lo seria superfície nova em produção
+     * por causa de teste. Verificado à mão no banco (jobname `eco-cache-purge`,
+     * `17 4 * * *`) e registrado no CLAUDE.md.
+     */
+  });
+
+  describe('telemetria em cache_events', () => {
+    beforeAll(async () => {
+      await wipe();
+      await serviceClient().from('cache_events').delete().eq('tenant_id', TENANT_A);
+    });
+
+    it('o sink grava os eventos e a view calcula os números da §9', async () => {
+      const { metrics } = await import('../src/metrics.js');
+      const { supabaseEventSink } = await import('../src/events.js');
+
+      metrics.setSink(supabaseEventSink(serviceClient(), TENANT_A));
+      metrics.emit({ type: 'hit_l0' });
+      metrics.emit({ type: 'hit_l1', similarity: 0.97 });
+      metrics.emit({ type: 'miss' });
+      metrics.emit({ type: 'guard_reject', similarity: 0.99 });
+
+      await vi.waitFor(async () => {
+        const { data } = await serviceClient()
+          .from('cache_metrics_daily')
+          .select('hits, miss, hit_rate, guard_reject_rate')
+          .eq('tenant_id', TENANT_A)
+          .single();
+
+        expect(data?.hits).toBe(2);
+        expect(data?.miss).toBe(1);
+        // 2 hits em 3 consultas servíveis.
+        expect(Number(data?.hit_rate)).toBeCloseTo(0.6667, 3);
+        // 1 rejeição do guard em 3 candidatos.
+        expect(Number(data?.guard_reject_rate)).toBeCloseTo(0.3333, 3);
+      });
+
+      metrics.setSink(() => {});
+    });
+
+    it('a RLS de cache_events isola o tenant', async () => {
+      const { data, error } = await clientForTenant(TENANT_B)
+        .from('cache_events')
+        .select('id')
+        .eq('tenant_id', TENANT_A);
+
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+    });
+  });
+
   describe('isolamento por tenant', () => {
     beforeAll(async () => {
       await wipe();

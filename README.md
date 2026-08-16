@@ -3,7 +3,8 @@
 Camada de cache semântico para RAG. Responde o que já foi respondido, sem misturar o que
 não pode ser misturado.
 
-[![status](https://img.shields.io/badge/status-rev--0.3-blue)](CHANGELOG.md)
+[![CI](https://github.com/vindonadao/eco-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/vindonadao/eco-cache/actions/workflows/ci.yml)
+[![status](https://img.shields.io/badge/status-rev--0.4-blue)](CHANGELOG.md)
 [![licença](https://img.shields.io/badge/licença-MIT-green)](LICENSE)
 
 ## O problema
@@ -103,21 +104,32 @@ Requer a extensão `vector`. Variáveis em [`.env.example`](.env.example).
 ## Antes de servir em produção
 
 Ligue em shadow mode. `CACHE_SHADOW_MODE=true` faz o cache consultar, registrar o que
-teria servido e **não servir**: o RAG roda e as duas respostas são comparadas. Só depois
-de ver a divergência real o threshold vai para produção.
+teria servido e **não servir**: o RAG roda e as duas respostas são comparadas por texto e
+por citações. A divergência vira evento `shadow_mismatch`, e a taxa aparece em
+`cache_metrics_daily`. Só depois de ver esse número o threshold vai para produção.
 
 Calibrar threshold no olho é como se descobre, três meses depois, que 4% das respostas
 estavam erradas.
 
+Para persistir a telemetria sem montar infra nova:
+
+```ts
+import { useSupabaseEvents } from '@donadao/eco';
+
+useSupabaseEvents(client, tenantId);   // grava em cache_events
+```
+
+Quem preferir Helicone ou LangSmith registra o próprio destino com `metrics.setSink`.
+
 ## Estado
 
-**rev-0.3.** O módulo roda ponta a ponta contra Postgres de verdade. As quatro migrations
-aplicam, a RPC `cache_lookup` responde nos dois níveis, a RLS foi exercitada com JWT
-assinado (inclusive a tentativa de gravar em nome de outro tenant, que volta 42501) e o
-ciclo completo foi verificado: a primeira pergunta paga o pipeline, a repetição volta do
-L0, a reformulação volta do L1 e o bump de corpus faz tudo pagar de novo.
+**rev-0.4.** O módulo está completo e verificado contra Postgres de verdade: as seis
+migrations aplicam, a RPC responde nos dois níveis, a RLS foi exercitada com JWT assinado
+(inclusive a tentativa de gravar em nome de outro tenant, que volta 42501), o ciclo
+completo funciona, o shadow mode mede divergência, o purge roda por `pg_cron` e a
+telemetria alimenta a view `cache_metrics_daily`.
 
-São 78 testes com banco, 58 sem. Quem clonar sem Docker roda a suíte normalmente: os
+São 86 testes com banco, 58 sem. Quem clonar sem Docker roda a suíte normalmente: os
 testes de integração pulam em vez de falhar.
 
 ```bash
@@ -125,10 +137,11 @@ supabase start   # aplica as migrations
 npm test
 ```
 
-O que falta antes de produção: a semana de shadow mode para calibrar o threshold com dado
-em vez do número do documento, e uma chamada real à API de embedding, que até aqui só
-rodou contra `fetch` falso. Extração de município não existe, só de UF, então perguntas
-sobre cidades diferentes do mesmo estado ainda dependem só do embedding para se separar.
+**Ainda não tem consumidor em produção.** O que falta não é código: é uma estreia real
+para rodar a semana de shadow e calibrar o threshold com dado em vez do número do
+documento. A API de embedding também nunca foi chamada de verdade, só contra `fetch`
+falso. E a extração cobre UF, não município, então perguntas sobre cidades diferentes do
+mesmo estado ainda dependem só do embedding para se separar.
 
 O plano completo está em [`docs/arquitetura.md`](docs/arquitetura.md), que é a fonte da
 verdade do projeto. O contexto de trabalho está em [`CLAUDE.md`](CLAUDE.md).
