@@ -2,6 +2,41 @@
 
 Todas as mudanças relevantes do Eco. Versionamento por revisões (`rev-X.Y`).
 
+## rev-0.5 — 16/08/2026
+
+O CI encontrou um bug de produção na primeira semana de vida.
+
+### Corrigido
+
+- **O schema subia inacessível em Supabase novo.** As migrations criavam tabelas, views e
+  sequences e nunca concediam acesso aos roles do PostgREST. Na máquina local passava,
+  porque o CLI 2.101 ainda aplica default privileges que dão `ALL` a `authenticated`. No
+  CI, com CLI `latest`, toda chamada respondia `permission denied for table rag_cache`.
+  Aplicado num Supabase atual, o Eco não funcionaria de jeito nenhum
+- `0007_grants.sql` concede o necessário e aperta o que o default deixava frouxo:
+  `cache_events` virou append-only de verdade (`update`, `delete` e `truncate` revogados
+  de `authenticated`), `truncate` saiu de `rag_cache` e `corpus_state` porque contorna a
+  RLS, `anon` foi revogado em tudo, e `cache_purge` saiu de `PUBLIC` para ficar só com
+  `service_role`
+
+### Como apareceu
+
+Três execuções vermelhas. A primeira e a segunda me levaram a conclusões erradas: achei
+que fossem credenciais, e cheguei a afirmar que as migrations não tinham aplicado, o que
+era falso (um `head -25` cortou as linhas do log e li a ausência como prova).
+
+Em vez de tentar um terceiro palpite, instrumentei: o workflow passou a listar as chaves
+que o `supabase status` expõe e a falhar nomeando a variável vazia, e `databaseAvailable()`
+passou a dizer em voz alta por que desistiu. A causa veio numa linha, no run seguinte.
+
+A guarda contra teste pulado é o que tornou tudo isso visível. Sem ela, o job estaria verde
+desde a primeira execução, com 24 testes de integração ignorados em silêncio e um badge no
+README afirmando que tudo passa.
+
+### Verificado
+
+- CI verde nos dois jobs, 86 testes passando, **zero pulados**
+
 ## rev-0.4 — 16/08/2026
 
 Fecha tudo que dependia só de código. O que resta precisa de uma estreia real.

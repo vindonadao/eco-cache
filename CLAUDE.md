@@ -82,7 +82,13 @@ Sem Docker a suíte não quebra, ela pula: `databaseAvailable()` checa antes e o
 
 ## Migrations
 
-`supabase/migrations/0001` a `0006`, na ordem, idempotentes.
+`supabase/migrations/0001` a `0007`, na ordem, idempotentes.
+
+**Toda tabela, view ou sequence nova precisa de GRANT explícito em `0007_grants.sql`.**
+Versões recentes do Supabase deixaram de conceder acesso automático a objetos novos no
+schema `public`. Sem o grant, o PostgREST responde `permission denied` e o módulo inteiro
+para, mesmo com o schema aplicado. Isso passou despercebido até o CI rodar num CLI mais
+novo que o da máquina de desenvolvimento. Privilégio aqui é explícito ou é surpresa.
 
 `0001` a `0003` são transcrição literal de `arquitetura.md` §4 e §5. `0004` implementa o
 que a §5 descreve em prosa. `0005` (purge da §8) e `0006` (telemetria da §9) traduzem

@@ -1,6 +1,6 @@
 {
   "name": "@donadao/eco",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Eco — camada de cache semântico para RAG. Responde o que já foi respondido, sem misturar o que não pode ser misturado.",
   "license": "MIT",
   "author": "Donadão Labs",

@@ -4,7 +4,7 @@ Camada de cache semântico para RAG. Responde o que já foi respondido, sem mist
 não pode ser misturado.
 
 [![CI](https://github.com/vindonadao/eco-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/vindonadao/eco-cache/actions/workflows/ci.yml)
-[![status](https://img.shields.io/badge/status-rev--0.4-blue)](CHANGELOG.md)
+[![status](https://img.shields.io/badge/status-rev--0.5-blue)](CHANGELOG.md)
 [![licença](https://img.shields.io/badge/licença-MIT-green)](LICENSE)
 
 ## O problema
@@ -90,14 +90,10 @@ tenant por `auth.jwt()`, então um client compartilhado leria o tenant errado.
 npm i github:vindonadao/eco-cache
 ```
 
-Aplique as migrations do pacote no seu Postgres, na ordem:
-
-```
-supabase/migrations/0001_semantic_cache.sql
-supabase/migrations/0002_rls.sql
-supabase/migrations/0003_fn_cache_lookup.sql
-supabase/migrations/0004_fn_cache_touch.sql
-```
+Aplique as migrations do pacote no seu Postgres, na ordem, `0001` a `0007`. A última
+concede os privilégios aos roles do PostgREST: sem ela o schema sobe e responde
+`permission denied` em tudo, porque versões recentes do Supabase não concedem mais acesso
+automático a objetos novos.
 
 Requer a extensão `vector`. Variáveis em [`.env.example`](.env.example).
 
