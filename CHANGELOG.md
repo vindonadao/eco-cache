@@ -2,6 +2,45 @@
 
 Todas as mudanças relevantes do Eco. Versionamento por revisões (`rev-X.Y`).
 
+## rev-0.3 — 16/08/2026
+
+O schema deixou de ser texto. Primeira execução contra Postgres real.
+
+### Corrigido
+
+- **`fold('pará')` produz `'para'`**, a preposição mais comum do português, e o extrator
+  de UF tratava toda pergunta com "para" como pergunta sobre o estado do Pará. "Como faço
+  para me cadastrar" ia para uma partição do PA e nunca casava com sua própria
+  reformulação. `para` e `pra` saíram da lista de preposições de lugar e `para` entrou na
+  lista de termos que exigem preposição antes. Só apareceu no ciclo completo contra banco;
+  nenhum teste unitário pegaria isso, porque o par da §7 usa "SP" e "São Paulo"
+
+### Adicionado
+
+- `tests/support/db.ts`: JWT HS256 assinado com `node:crypto`, clients por tenant e por
+  serviço, vetor determinístico e detecção de banco disponível
+- `tests/invalidation.test.ts` reescrito como integração real, 20 casos: RPC nos dois
+  níveis, expiração, isolamento de partição, invalidação global e seletiva, RLS de leitura
+  e de escrita, e o ciclo completo (MISS grava, L0 serve, L1 serve, `cache_touch` conta,
+  bump invalida)
+- Regressão do "para" travada em `tests/partition.test.ts`
+- Stack Supabase local: `supabase/config.toml` com portas 544xx
+
+### Verificado contra Postgres
+
+- As quatro migrations aplicam limpas e são idempotentes
+- `cache_lookup` responde L0 por hash e L1 por vizinhança, e não atravessa partição
+- RLS devolve 42501 na tentativa de gravar em nome de outro tenant, e deixa passar a
+  gravação legítima. Sem checar o código do erro, o teste passaria por motivo errado
+- Dois tenants com o mesmo `query_hash` na mesma partição não se enxergam
+- 78 testes com banco, 58 sem. Sem Docker a suíte pula em vez de falhar
+
+### Notas de ambiente
+
+- Portas realocadas para a faixa 544xx: a 54322 estava ocupada por outro Supabase local
+- `analytics` desligado no `config.toml`: o container de logs tenta montar o socket do
+  colima e derruba o start
+
 ## rev-0.2 — 15/08/2026
 
 Sprint 2. O módulo passa a rodar ponta a ponta.

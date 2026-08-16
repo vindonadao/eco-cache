@@ -84,6 +84,29 @@ describe('extractUfs', () => {
   it('coleta várias UFs em ordem estável', () => {
     expect(extractUfs('editais em sp e no rio grande do sul').ufs).toEqual(['RS', 'SP']);
   });
+
+  /**
+   * Regressão: `fold('pará')` produz `'para'`, a preposição mais comum do português.
+   * Sem preposição de lugar obrigatória, toda pergunta com "para" ia parar numa
+   * partição do estado do Pará. Apareceu só no ciclo completo contra Postgres.
+   */
+  describe('"para" não é o estado do Pará', () => {
+    it('preposição comum não vira UF', () => {
+      expect(extractUfs('como faço para me cadastrar').ufs).toEqual([]);
+      expect(extractUfs('quero saber para quando é o prazo').ufs).toEqual([]);
+      expect(extractUfs('o que preciso para participar').ufs).toEqual([]);
+    });
+
+    it('mas o estado continua sendo detectado, com ou sem acento', () => {
+      expect(extractUfs('editais abertos no pará').ufs).toEqual(['PA']);
+      expect(extractUfs('editais abertos no para').ufs).toEqual(['PA']);
+      expect(extractUfs('editais no pa').ufs).toEqual(['PA']);
+    });
+
+    it('e "para" continua funcionando como preposição diante de UF não ambígua', () => {
+      expect(extractUfs('editais para são paulo').ufs).toEqual(['SP']);
+    });
+  });
 });
 
 describe('extractPartition', () => {

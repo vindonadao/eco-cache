@@ -17,3 +17,7 @@ dist/
 # Cobertura e cache de teste
 coverage/
 .vitest/
+
+# Runtime do Supabase local (config.toml e migrations são versionados)
+supabase/.branches/
+supabase/.temp/

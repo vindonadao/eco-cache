@@ -46,9 +46,7 @@ consome já tem.
 | `src/embed.ts` | 2 | voyage-3-lite, orçamento de 800 ms com retry dentro | pronto |
 | `src/index.ts` | 1 | `answerWithCache()`, o contrato público | pronto |
 
-`answerWithCache()` roda ponta a ponta desde a rev-0.2. Nunca foi exercitado contra
-Postgres real: os testes usam client e `fetch` falsos. Aplicar as migrations num Supabase
-de teste é o próximo passo antes de qualquer estreia.
+`answerWithCache()` roda ponta a ponta contra Postgres real desde a rev-0.3.
 
 ## Testes
 
@@ -57,12 +55,28 @@ de teste é o próximo passo antes de qualquer estreia.
 | `tests/false-positive.test.ts` | **Bloqueante.** Os pares da §7, ativos |
 | `tests/partition.test.ts` | Normalização, política, UF, partição, entity tokens, guard |
 | `tests/embed.test.ts` | Retry, orçamento de 800 ms, dimensão, ausência de chave |
-| `tests/answer-with-cache.test.ts` | Fluxo completo: hit, miss, degradação, guard, shadow, bypass |
-| `tests/invalidation.test.ts` | `todo`: precisa de banco, é Sprint 4 |
+| `tests/answer-with-cache.test.ts` | Fluxo com client falso: hit, miss, degradação, guard, shadow, bypass |
+| `tests/invalidation.test.ts` | **Integração real.** RPC, RLS, ciclo completo, invalidação |
+| `tests/support/db.ts` | JWT HS256 por `node:crypto`, clients por tenant, skip condicional |
 
 `embed.test.ts` e `answer-with-cache.test.ts` não estão na lista da §6. Foram criados
 porque as duas promessas mais fortes do documento (falha de embedding não derruba o
 produto, e o guard tem a palavra final) não podem ficar sem teste.
+
+## Rodando o banco local
+
+```bash
+supabase start     # aplica as 4 migrations automaticamente
+npm test           # 78 testes, 20 deles contra Postgres
+supabase stop
+```
+
+O `config.toml` usa portas na faixa **544xx** (API 54421, DB 54422, Studio 54423) porque
+a faixa padrão 543xx já estava ocupada por outro projeto Supabase local nesta máquina.
+`analytics` está desligado: o container de logs tenta montar o socket do colima e falha.
+
+Sem Docker a suíte não quebra, ela pula: `databaseAvailable()` checa antes e o
+`describe.skipIf` faz o resto. Sem banco são 58 testes, com banco 78.
 
 ## Migrations
 
@@ -117,6 +131,12 @@ ordem faz `15/08/2026` virar edital e `R$ 1.000.000` virar código CNAE.
 "retry e timeout de 800 ms". Duas tentativas de 800 ms dariam 1,6 s num caminho que
 promete 90 ms, então o retry só acontece se sobrar tempo no deadline.
 
+**11. `para` e `pra` não são preposições de lugar para efeito de UF.** `fold('pará')`
+produz `para`. Se `para` valesse como preposição, "para se cadastrar" viraria Sergipe e
+"para me inscrever" viraria Pará. O preço é não detectar "editais para SE", que cai na
+partição vazia. É falso negativo, o lado barato da assimetria, e construção verbal com
+"para se / para me / para te" é muito mais frequente que essa forma de citar um estado.
+
 ## Realidade dos consumidores (verificado em 15/08/2026)
 
 - **PregApp (o "Editais monitor" do documento) não tem RAG.** Migrations `0001` a `0006`,
@@ -148,8 +168,11 @@ promete 90 ms, então o retry só acontece se sobrar tempo no deadline.
 - [x] `embed` com orçamento de 800 ms e degradação para L0 quando falha
 - [x] Todos os pares da §7 rodando como teste real, verdes
 - [x] `npm run lint && npm run typecheck && npm test` limpos
-- [ ] Migrations aplicadas num Supabase de teste, `cache_lookup` respondendo
+- [x] Migrations aplicadas num Supabase de teste, `cache_lookup` respondendo
+- [x] RLS exercitada com JWT real, incluindo a tentativa de gravar em nome de outro tenant
+- [x] Ciclo completo verificado contra Postgres: MISS grava, L0 e L1 servem, bump invalida
 - [ ] Estreia em shadow mode com métrica de divergência coletada
+- [ ] Threshold calibrado com dado, não com o número do documento
 
 ## Limitações conhecidas
 
@@ -157,10 +180,14 @@ promete 90 ms, então o retry só acontece se sobrar tempo no deadline.
   dicionarizadas; os 5.570 municípios não. Duas perguntas sobre cidades diferentes do
   mesmo estado caem na mesma partição e dependem só do embedding para se separar. Se
   algum consumidor for por cidade, isso vira falso positivo e precisa de solução antes.
-- **Nenhum teste tocou Postgres.** Client e `fetch` são falsos. As migrations, a RPC e a
-  RLS estão escritas mas não executadas.
+- **Siglas ambíguas exigem preposição estrita.** "editais em SE" é detectado, "editais
+  para SE" não. Ver decisão 11.
 - **O threshold de 0,94 é o do documento, não medido.** Só sai do lugar depois da semana
   de shadow mode.
+- **A API da Voyage nunca foi chamada de verdade.** `embed()` sempre rodou contra `fetch`
+  falso. A forma da resposta veio da documentação, não de uma chamada observada.
+- **Sem `pg_cron` configurado.** O purge físico da §8 está escrito no documento e não
+  existe como job.
 
 ## Forks abertos (arquitetura.md §12)
 

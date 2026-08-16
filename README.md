@@ -3,7 +3,7 @@
 Camada de cache semântico para RAG. Responde o que já foi respondido, sem misturar o que
 não pode ser misturado.
 
-[![status](https://img.shields.io/badge/status-rev--0.2-blue)](CHANGELOG.md)
+[![status](https://img.shields.io/badge/status-rev--0.3-blue)](CHANGELOG.md)
 [![licença](https://img.shields.io/badge/licença-MIT-green)](LICENSE)
 
 ## O problema
@@ -111,15 +111,24 @@ estavam erradas.
 
 ## Estado
 
-**rev-0.2.** O módulo roda ponta a ponta: partição determinística, entity guard,
-embedding com orçamento de 800 ms, os três níveis de cache, invalidação por versão de
-corpus. A suíte de falso positivo está ativa e verde, com os pares da tabela obrigatória.
-São 55 testes.
+**rev-0.3.** O módulo roda ponta a ponta contra Postgres de verdade. As quatro migrations
+aplicam, a RPC `cache_lookup` responde nos dois níveis, a RLS foi exercitada com JWT
+assinado (inclusive a tentativa de gravar em nome de outro tenant, que volta 42501) e o
+ciclo completo foi verificado: a primeira pergunta paga o pipeline, a repetição volta do
+L0, a reformulação volta do L1 e o bump de corpus faz tudo pagar de novo.
 
-O que falta antes de produção: aplicar as migrations num Postgres de verdade (nenhum
-teste tocou banco, o client é falso) e rodar a semana de shadow mode para calibrar o
-threshold. Extração de município não existe, só de UF, então perguntas sobre cidades
-diferentes do mesmo estado ainda dependem só do embedding para se separar.
+São 78 testes com banco, 58 sem. Quem clonar sem Docker roda a suíte normalmente: os
+testes de integração pulam em vez de falhar.
+
+```bash
+supabase start   # aplica as migrations
+npm test
+```
+
+O que falta antes de produção: a semana de shadow mode para calibrar o threshold com dado
+em vez do número do documento, e uma chamada real à API de embedding, que até aqui só
+rodou contra `fetch` falso. Extração de município não existe, só de UF, então perguntas
+sobre cidades diferentes do mesmo estado ainda dependem só do embedding para se separar.
 
 O plano completo está em [`docs/arquitetura.md`](docs/arquitetura.md), que é a fonte da
 verdade do projeto. O contexto de trabalho está em [`CLAUDE.md`](CLAUDE.md).

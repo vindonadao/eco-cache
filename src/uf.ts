@@ -43,12 +43,25 @@ const UF_NAMES: Record<string, string[]> = {
 };
 
 /**
- * Siglas que também são palavra corrente em português. Exigem preposição de lugar
- * antes para contar como UF, senão "se você tem interesse" viraria Sergipe.
+ * Termos que também são palavra corrente em português e por isso exigem preposição de
+ * lugar antes para contar como UF.
+ *
+ * Sem isso, "se você tem interesse" vira Sergipe. O caso mais traiçoeiro é `para`:
+ * `fold('pará')` produz exatamente a preposição mais comum do idioma, então "como faço
+ * para me cadastrar" era lido como uma pergunta sobre o estado do Pará e ia para outra
+ * partição. Descoberto rodando o ciclo completo contra Postgres, não em teste unitário.
  */
-const AMBIGUOUS_ACRONYMS = new Set(['se', 'to', 'ma', 'pa', 'go', 'ac', 'al', 'am']);
+const AMBIGUOUS_TERMS = new Set(['se', 'to', 'ma', 'pa', 'go', 'ac', 'al', 'am', 'para']);
 
-const PLACE_PREPOSITION = '(?:em|no|na|de|do|da|para|pra|até|ate|-|/)\\s+';
+const PLACE_PREPOSITION = '(?:em|no|na|de|do|da|até|ate|-|/)\\s+';
+
+/** Termo ambíguo só conta como UF se vier depois de preposição de lugar. */
+function patternFor(term: string): string {
+  const escaped = escapeRegex(term);
+  return AMBIGUOUS_TERMS.has(term)
+    ? `(?<!\\p{L})${PLACE_PREPOSITION}${escaped}(?!\\p{L})`
+    : `(?<!\\p{L})${escaped}(?!\\p{L})`;
+}
 
 /** Aliases por extenso, do mais longo para o mais curto: "mato grosso do sul" antes de "mato grosso". */
 const NAME_ALIASES: ReadonlyArray<{ uf: string; alias: string }> = Object.entries(UF_NAMES)
@@ -72,25 +85,17 @@ export function extractUfs(normalized: string): UfMatch {
   const found = new Set<string>();
   let rest = normalized;
 
-  for (const { uf, alias } of NAME_ALIASES) {
-    const re = new RegExp(`(?<!\\p{L})${escapeRegex(alias)}(?!\\p{L})`, 'giu');
-    if (re.test(rest)) {
-      found.add(uf);
-      rest = rest.replace(new RegExp(`(?<!\\p{L})${escapeRegex(alias)}(?!\\p{L})`, 'giu'), ' ');
-    }
-  }
-
-  for (const uf of UF_CODES) {
-    const sigla = uf.toLowerCase();
-    const pattern = AMBIGUOUS_ACRONYMS.has(sigla)
-      ? `(?<!\\p{L})(${PLACE_PREPOSITION})${sigla}(?!\\p{L})`
-      : `(?<!\\p{L})${sigla}(?!\\p{L})`;
-    const re = new RegExp(pattern, 'giu');
-    if (re.test(rest)) {
+  const match = (uf: string, term: string) => {
+    const pattern = patternFor(term);
+    if (new RegExp(pattern, 'iu').test(rest)) {
       found.add(uf);
       rest = rest.replace(new RegExp(pattern, 'giu'), ' ');
     }
-  }
+  };
+
+  // Nome por extenso primeiro: o dicionário casa o alias mais longo antes do mais curto.
+  for (const { uf, alias } of NAME_ALIASES) match(uf, alias);
+  for (const uf of UF_CODES) match(uf, uf.toLowerCase());
 
   return { ufs: [...found].sort(), rest };
 }
