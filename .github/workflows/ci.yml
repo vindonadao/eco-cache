@@ -48,13 +48,26 @@ jobs:
       # acabou de subir em vez de assumidas. Hardcodá-las fez o job pular tudo em silêncio.
       - name: Exporta as credenciais do stack
         run: |
-          supabase status -o env > .supabase-env
+          echo "Chaves disponíveis no status:"
+          supabase status -o json | jq -r 'keys[]'
+
+          URL=$(supabase status -o json | jq -r '.API_URL // empty')
+          KEY=$(supabase status -o json | jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty')
+          SECRET=$(supabase status -o json | jq -r '.JWT_SECRET // empty')
+
+          # Falhar aqui, com nome, é melhor que a suíte pular 24 testes lá na frente.
+          for pair in "API_URL:$URL" "SERVICE_ROLE_KEY:$KEY" "JWT_SECRET:$SECRET"; do
+            if [ -z "${pair#*:}" ]; then
+              echo "::error::${pair%%:*} veio vazio do supabase status"
+              exit 1
+            fi
+          done
+
           {
-            echo "TEST_SUPABASE_URL=$(grep '^API_URL=' .supabase-env | cut -d'"' -f2)"
-            echo "TEST_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' .supabase-env | cut -d'"' -f2)"
-            echo "TEST_JWT_SECRET=$(grep '^JWT_SECRET=' .supabase-env | cut -d'"' -f2)"
+            echo "TEST_SUPABASE_URL=$URL"
+            echo "TEST_SERVICE_ROLE_KEY=$KEY"
+            echo "TEST_JWT_SECRET=$SECRET"
           } >> "$GITHUB_ENV"
-          rm .supabase-env
 
       - run: npm ci
 

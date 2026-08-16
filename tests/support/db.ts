@@ -65,13 +65,32 @@ export function fakeVector(seed: number, dims = 512): number[] {
   return Array.from({ length: dims }, (_, i) => Math.sin(seed * (i + 1)) / 10);
 }
 
-/** O banco de teste está de pé e com as migrations aplicadas? */
+/**
+ * O banco de teste está de pé e com as migrations aplicadas?
+ *
+ * Diz em voz alta por que desistiu. Skip silencioso é o pior resultado possível: a suíte
+ * fica verde sem ter testado nada, e foi assim que o CI quase passou um job vazio.
+ */
 export async function databaseAvailable(): Promise<boolean> {
-  if (!SERVICE_KEY || !JWT_SECRET) return false;
+  const missing = [
+    !SERVICE_KEY && 'TEST_SERVICE_ROLE_KEY',
+    !JWT_SECRET && 'TEST_JWT_SECRET',
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    console.warn(`[eco] integração pulada: faltou ${missing.join(', ')}`);
+    return false;
+  }
+
   try {
     const { error } = await serviceClient().from('rag_cache').select('id').limit(1);
-    return !error;
-  } catch {
+    if (error) {
+      console.warn(`[eco] integração pulada: ${SUPABASE_URL} respondeu "${error.message}"`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn(`[eco] integração pulada: ${SUPABASE_URL} inacessível (${String(error)})`);
     return false;
   }
 }
